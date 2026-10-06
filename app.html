@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MatMath - mat board cut calculator</title>
+<style>
+:root{--bg:#111009;--panel:#1c1a12;--line:#3a3524;--fg:#f0ead8;--dim:#a89f86;--acc:#e0b84f;--warn:#d29922}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+.top{display:flex;align-items:baseline;gap:12px;padding:16px 22px;border-bottom:1px solid var(--line);background:var(--panel)}
+.top b{font-size:19px}.top b span{color:var(--acc)}
+.top small{color:var(--dim)}
+.wrap{max-width:1000px;margin:0 auto;padding:20px}
+.cols{display:grid;grid-template-columns:320px 1fr;gap:16px}
+@media(max-width:800px){.cols{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+label{display:block;font-size:12.5px;color:var(--dim);margin:10px 0 3px}
+input,select{width:100%;background:#14120b;border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:8px 10px;font-size:14px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button{background:#262216;border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:8px 14px;font-size:14px;cursor:pointer}
+button.on{border-color:var(--acc);color:var(--acc)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.warn{background:#2d2306;border:1px solid #9e6a03;color:#e3b341;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13.5px}
+.warn ul{margin:6px 0 0;padding-left:18px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{color:var(--dim);text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);font-weight:600}
+td{padding:4px 8px;border-bottom:1px solid #26231a;font-family:ui-monospace,Menlo,Consolas,monospace}
+h3{margin:0 0 8px;font-size:13px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+footer{color:var(--dim);font-size:13px;text-align:center;padding:18px}
+footer a{color:var(--acc);text-decoration:none}
+svg text{font-family:ui-monospace,Menlo,Consolas,monospace}
+</style>
+</head>
+<body>
+<div class="top"><b>Mat<span>Math</span></b><small>exact window cuts for picture frame mats - even or optically centered</small></div>
+<div class="wrap">
+<div class="cols">
+<div>
+  <div class="card">
+    <div class="row" id="unitrow">
+      <button data-u="mm" class="on">millimeters</button>
+      <button data-u="in">inches</button>
+    </div>
+    <div class="pair">
+      <div><label>frame width</label><input type="number" id="fw" value="400" step="any"></div>
+      <div><label>frame height</label><input type="number" id="fh" value="400" step="any"></div>
+    </div>
+    <div class="pair">
+      <div><label>print width</label><input type="number" id="pw" value="200" step="any"></div>
+      <div><label>print height</label><input type="number" id="ph" value="200" step="any"></div>
+    </div>
+    <div class="pair">
+      <div><label>overlap per side</label><input type="number" id="ov" value="3" step="any"></div>
+      <div><label>min border (warn)</label><input type="number" id="mb" value="25" step="any"></div>
+    </div>
+    <label>centering</label>
+    <div class="row" id="moderow">
+      <button data-m="even" class="on">even</button>
+      <button data-m="optical">optical</button>
+      <input type="number" id="wt" value="0.15" step="0.05" style="width:80px" title="optical weight">
+    </div>
+  </div>
+  <div class="card">
+    <h3>cut plan</h3>
+    <table>
+      <tr><th>window</th><td id="twin"></td></tr>
+      <tr><th>borders L/R</th><td id="tlr"></td></tr>
+      <tr><th>border top</th><td id="ttop"></td></tr>
+      <tr><th>border bottom</th><td id="tbot"></td></tr>
+      <tr><th>cut from left edge</th><td id="tcl"></td></tr>
+      <tr><th>cut from right edge</th><td id="tcr"></td></tr>
+      <tr><th>cut from top edge</th><td id="tct"></td></tr>
+      <tr><th>cut from bottom edge</th><td id="tcb"></td></tr>
+    </table>
+  </div>
+</div>
+<div>
+  <div id="warnbox"></div>
+  <div class="card">
+    <h3>the mat</h3>
+    <svg id="viz" viewBox="0 0 620 560" style="width:100%;height:auto;display:block"></svg>
+  </div>
+</div>
+</div>
+</div>
+<footer>Cross-checked against an independent Python implementation (72 checks). <a href="index.html">about</a></footer>
+<script src="engine.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+let unit='mm',mode='even';
+const DEFAULTS={mm:{fw:400,fh:400,pw:200,ph:200,ov:3,mb:25},in:{fw:10,fh:8,pw:6,ph:6,ov:0.125,mb:1}};
+function read(){
+  return {unit:unit,frameW:+$('fw').value,frameH:+$('fh').value,printW:+$('pw').value,printH:+$('ph').value,
+          overlap:+$('ov').value,minBorder:+$('mb').value,mode:mode,weight:+$('wt').value||0.15};
+}
+function render(){
+  const o=read();
+  const r=MatMath.compute(o);
+  const f=v=>MatMath.fmt(v,unit)+(unit==='in'?' in':' mm');
+  $('twin').textContent=f(r.window.w)+' x '+f(r.window.h);
+  $('tlr').textContent=f(r.borders.left)+' / '+f(r.borders.right);
+  $('ttop').textContent=f(r.borders.top);
+  $('tbot').textContent=f(r.borders.bottom);
+  $('tcl').textContent=f(r.cuts.left);
+  $('tcr').textContent=f(r.cuts.right)+' from left';
+  $('tct').textContent=f(r.cuts.top);
+  $('tcb').textContent=f(r.cuts.bottom)+' from top';
+  $('warnbox').innerHTML=r.warnings.length?'<div class="warn">heads-up:<ul>'+r.warnings.map(w=>'<li>'+w+'</li>').join('')+'</ul></div>':'';
+  draw(o,r);
+}
+function draw(o,r){
+  const svg=$('viz'),NS='http://www.w3.org/2000/svg';
+  while(svg.firstChild)svg.removeChild(svg.firstChild);
+  const fw=MatMath.toMm(o.frameW,unit),fh=MatMath.toMm(o.frameH,unit);
+  const pad=70,W=620,H=560;
+  const sc=Math.min((W-2*pad)/fw,(H-2*pad)/fh);
+  const ox=(W-fw*sc)/2,oy=(H-fh*sc)/2;
+  function rect(x,y,w,h,fill,stroke,sw,dash){
+    const e=document.createElementNS(NS,'rect');
+    e.setAttribute('x',x);e.setAttribute('y',y);e.setAttribute('width',Math.max(0,w));e.setAttribute('height',Math.max(0,h));
+    e.setAttribute('fill',fill);if(stroke){e.setAttribute('stroke',stroke);e.setAttribute('stroke-width',sw||1);if(dash)e.setAttribute('stroke-dasharray','5 4');}
+    svg.appendChild(e);return e;
+  }
+  function text(x,y,t,anchor,color,size){
+    const e=document.createElementNS(NS,'text');
+    e.setAttribute('x',x);e.setAttribute('y',y);e.setAttribute('text-anchor',anchor||'middle');
+    e.setAttribute('fill',color||'#a89f86');e.setAttribute('font-size',size||12);e.textContent=t;
+    svg.appendChild(e);return e;
+  }
+  rect(ox,oy,fw*sc,fh*sc,'#26231a','#e0b84f',2);
+  // window
+  const wl=ox+r.cuts.left*sc,wt=oy+r.cuts.top*sc,ww=r.window.w*sc,wh=r.window.h*sc;
+  if(ww>0&&wh>0){
+    rect(wl,wt,ww,wh,'#111009','#e0b84f',1.5);
+    // print outline (window + overlap) dashed
+    const ovM=MatMath.toMm(o.overlap,unit)*sc;
+    rect(wl-ovM,wt-ovM,ww+2*ovM,wh+2*ovM,'none','#7a6a3a',1,true);
+    text(wl+ww/2,wt+wh/2,'window','middle','#e0b84f',13);
+    text(wl+ww/2,wt+wh/2+16,MatMath.fmt(r.window.w,unit)+' x '+MatMath.fmt(r.window.h,unit),'middle','#7a6a3a',11);
+  }
+  // dimension labels
+  text(ox+fw*sc/2,oy-14,'frame '+MatMath.fmt(fw,unit)+' x '+MatMath.fmt(fh,unit),'middle','#a89f86',13);
+  const f=v=>MatMath.fmt(v,unit);
+  text(wl-8,wt+wh/2,f(r.borders.left),'end','#c9b678',11);
+  text(wl+ww+8,wt+wh/2,f(r.borders.right),'start','#c9b678',11);
+  text(wl+ww/2,wt-8,f(r.borders.top),'middle','#c9b678',11);
+  text(wl+ww/2,wt+wh+16,f(r.borders.bottom),'middle','#c9b678',11);
+}
+document.querySelectorAll('#unitrow button').forEach(b=>b.onclick=()=>{
+  unit=b.dataset.u;
+  document.querySelectorAll('#unitrow button').forEach(x=>x.classList.toggle('on',x===b));
+  const d=DEFAULTS[unit];
+  $('fw').value=d.fw;$('fh').value=d.fh;$('pw').value=d.pw;$('ph').value=d.ph;$('ov').value=d.ov;$('mb').value=d.mb;
+  render();
+});
+document.querySelectorAll('#moderow button').forEach(b=>b.onclick=()=>{
+  mode=b.dataset.m;
+  document.querySelectorAll('#moderow button').forEach(x=>x.classList.toggle('on',x===b));
+  render();
+});
+document.querySelectorAll('input').forEach(i=>i.addEventListener('input',render));
+render();
+</script>
+</body>
+</html>
